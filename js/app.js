@@ -189,8 +189,15 @@ async function tampilForm(id) {
     id: id, s: s, jenis: s.jenis, bank: bank, tabel: m.tabel, opsi: m.opsi, petugasMaster: m.petugas,
     timPetugas: tim ? tim.petugas.slice() : [], langkah: susunLangkah(bank),
     step: 0, status: server ? server.status : 'baru', kotor: false, adaServer: !!server, kabar: kabarServer,
-    tanggal: '', petugas: [], pendampingNama: '', pendampingInstansi: '', jawaban: {}, responden: [], petugasLain: false, kunci: false, bukaGrup: {}
+    tanggal: '', petugas: [], pendampingNama: '', pendampingInstansi: '', jawaban: {}, responden: [], petugasLain: false, kunci: false, bukaGrup: {},
+    rekan: [], bersama: [], sigSebar: ''
   };
+  // Sekolah lain dalam tim dan tahap yang sama: petugas dan pendamping cukup diisi sekali.
+  if (s.jenis === 'Satdik') {
+    F.rekan = m.lokus.filter(function (x) { return x.jenis === 'Satdik' && x.idTim === s.idTim && x.tahap === s.tahap && x.idLokus !== id; })
+      .map(function (x) { return { idLokus: x.idLokus, nama: x.nama }; });
+    F.bersama = F.rekan.map(function (x) { return x.idLokus; });
+  }
   var sumber = null;
   if (lokal && lokal.data) { sumber = lokal.data; F.kotor = true; F.kabar = 'Isian yang belum terkirim dari perangkat ini dimuat kembali.'; }
   else if (server) sumber = server;
@@ -209,6 +216,7 @@ async function tampilForm(id) {
   }
   Aturan.isiAwal(F.bank, F.jenis, s, F.jawaban);
   Aturan.hitungOtomatis(F.bank, F.jawaban);
+  if (sumber) F.sigSebar = sigHadir(); // hanya sebarkan bila petugas atau pendamping diubah di sesi ini
   gambarForm();
 }
 
@@ -300,6 +308,13 @@ function htmlHadir() {
   if (F.petugasLain) h += '<div class="baris"><input class="input" id="petugasBaru" placeholder="Nama petugas"><button class="btn" data-aksi="tambahPetugas">Tambah</button></div>';
   h += '<label class="lbl">Pendamping dari Cabang Dinas Pendidikan</label><input class="input" data-f="pendampingNama" placeholder="Nama pendamping (kosongkan bila tidak ada)" value="' + esc(F.pendampingNama) + '">' +
     '<input class="input" data-f="pendampingInstansi" placeholder="Instansi, misalnya KCD Wilayah II" value="' + esc(F.pendampingInstansi) + '">';
+  if (F.rekan.length) {
+    h += '<div class="bersama"><b>Tim yang sama ke sekolah lain</b><p class="kecil">Petugas dan pendamping di atas ikut disimpan untuk sekolah berikut, jadi tidak perlu diisi lagi. Tanggal dan responden tetap diisi per sekolah.</p>';
+    F.rekan.forEach(function (x) {
+      h += '<label class="cek"><input type="checkbox" data-bersama="' + esc(x.idLokus) + '"' + (F.bersama.indexOf(x.idLokus) >= 0 ? ' checked' : '') + '><span>' + esc(x.nama) + '</span></label>';
+    });
+    h += '</div>';
+  }
   h += '<label class="lbl">Responden yang hadir</label><p class="kecil">Ketuk peran untuk menambah responden, lalu ketik namanya. Peran lain bisa ditambahkan sendiri.</p><div class="chips">';
   daftarPeran().forEach(function (o) { h += '<button class="chip" data-aksi="tambahPeran" data-peran="' + esc(o.nilai) + '">+ ' + esc(o.nilai) + '</button>'; });
   h += '<button class="chip" data-aksi="tambahLain">+ Peran lain</button></div><div id="daftarResponden">' + htmlResponden() + '</div>';
@@ -473,6 +488,11 @@ function pasangForm() {
       var v = el.value;
       if (v === '__lain') { F.petugasLain = true; gambarForm(); var pb = document.getElementById('petugasBaru'); if (pb) pb.focus(); }
       else if (v && F.petugas.indexOf(v) < 0) { F.petugas.push(v); tandaiKotor(); gambarForm(); }
+    } else if (el.hasAttribute('data-bersama')) {
+      var ib = el.getAttribute('data-bersama'), pos = F.bersama.indexOf(ib);
+      if (el.checked && pos < 0) F.bersama.push(ib);
+      if (!el.checked && pos >= 0) F.bersama.splice(pos, 1);
+      F.sigSebar = '';
     } else if (el.hasAttribute('data-petugas')) {
       var p = el.getAttribute('data-petugas'), i = F.petugas.indexOf(p);
       if (el.checked && i < 0) F.petugas.push(p);
@@ -533,10 +553,44 @@ async function pindah(ke) {
   // simpan ke server diam-diam saat pindah langkah, kecuali sudah berstatus selesai
   if (F.kotor && F.status !== 'selesai' && adaSesuatu()) {
     simpanLokal(K.draft + F.id, { at: Date.now(), data: muatan('draft') });
-    apiSimpanIsian(muatan('draft')).then(function () { F.kotor = false; F.adaServer = true; F.status = 'draft'; hapusLokal(K.draft + F.id); })
+    apiSimpanIsian(muatan('draft')).then(function () { F.kotor = false; F.adaServer = true; F.status = 'draft'; hapusLokal(K.draft + F.id); return sebarKehadiran(); }).then(function (r) { var k = r && kabarSebar(r); if (k) toast(k.teks, k.galat ? 'galat' : ''); })
       .catch(function (er) { console.error('simpan otomatis', er); toast('Belum tersimpan di server, aman di perangkat ini.', 'galat'); });
   }
   F.step = ke; F.kabar = ''; gambarForm(); window.scrollTo(0, 0);
+}
+function sigHadir() { return [F.petugas.join(';'), F.pendampingNama, F.pendampingInstansi, F.bersama.join(',')].join('|'); }
+
+// Simpan petugas dan pendamping ke sekolah lain dalam tim. Jawaban, responden, dan tanggal sekolah itu tidak disentuh.
+async function sebarKehadiran() {
+  var hasil = [], gagal = [];
+  if (!F || !F.bersama.length || !F.petugas.length) return { hasil: hasil, gagal: gagal };
+  var sig = sigHadir();
+  if (sig === F.sigSebar) return { hasil: hasil, gagal: gagal };
+  for (var i = 0; i < F.bersama.length; i++) {
+    var idx = F.bersama[i], nama = (F.rekan.filter(function (x) { return x.idLokus === idx; })[0] || {}).nama || idx;
+    try {
+      var sv = await apiGetIsian(idx);
+      if (sv && sv.status === 'selesai') continue;
+      var lok = bacaLokal(K.draft + idx);
+      var data = lok && lok.data ? lok.data : null;
+      var dasar = data || sv || {};
+      var body = {
+        idLokus: idx, status: 'draft', tanggalPelaksanaan: dasar.tanggalPelaksanaan || '',
+        petugasHadir: F.petugas.slice(), pendampingNama: F.pendampingNama, pendampingInstansi: F.pendampingInstansi,
+        jawaban: dasar.jawaban || {}, responden: dasar.responden || []
+      };
+      if (data) { data.petugasHadir = body.petugasHadir; data.pendampingNama = body.pendampingNama; data.pendampingInstansi = body.pendampingInstansi; simpanLokal(K.draft + idx, lok); }
+      await apiSimpanIsian(body);
+      hasil.push(nama);
+    } catch (er) { console.error('sebar kehadiran', er); gagal.push(nama); }
+  }
+  if (!gagal.length) F.sigSebar = sig;
+  return { hasil: hasil, gagal: gagal };
+}
+function kabarSebar(r) {
+  if (r.gagal.length) return { teks: 'Petugas dan pendamping belum tersimpan untuk ' + r.gagal.join(', ') + '. Coba Simpan sementara lagi.', galat: true };
+  if (r.hasil.length) return { teks: 'Petugas dan pendamping juga tersimpan untuk ' + r.hasil.join(', ') + '.' };
+  return null;
 }
 function adaSesuatu() { return hitungSekarang().terisi > 0 || F.responden.length > 0 || F.petugas.length > 0; }
 
@@ -548,9 +602,10 @@ async function kirim(status, tombol) {
   try {
     var r = await apiSimpanIsian(muatan(status));
     F.kotor = false; F.adaServer = true; hapusLokal(K.draft + F.id);
+    var kb = kabarSebar(await sebarKehadiran());
     if (status === 'selesai') { F.kunci = false; location.hash = '#/selesai/' + encodeURIComponent(F.id); return; }
     F.status = 'draft';
-    toast('Tersimpan: ' + r.butirTerisi + ' dari ' + r.totalButir + ' butir');
+    toast('Tersimpan: ' + r.butirTerisi + ' dari ' + r.totalButir + ' butir' + (kb ? '. ' + kb.teks : ''), kb && kb.galat ? 'galat' : '');
   } catch (e) {
     var kur = e.kurang ? ' (' + e.kurang.length + ' bagian)' : '';
     toast(e.message + kur, 'galat');

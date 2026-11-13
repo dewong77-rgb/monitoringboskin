@@ -114,3 +114,5 @@ details.profil summary{font-weight:700;cursor:pointer;min-height:28px}
 .profil-isi{display:grid;gap:8px;margin-top:8px}
 .chips-profil{display:flex;flex-wrap:wrap;gap:6px}
 .profil-isi p{margin:0}
+.bersama{background:#FFF9F0;border-left:4px solid var(--kuning);padding:10px 12px;border-radius:6px;margin-top:16px}
+.bersama .cek{background:#fff;margin-top:6px}
