@@ -116,3 +116,9 @@ details.profil summary{font-weight:700;cursor:pointer;min-height:28px}
 .profil-isi p{margin:0}
 .bersama{background:#FFF9F0;border-left:4px solid var(--kuning);padding:10px 12px;border-radius:6px;margin-top:16px}
 .bersama .cek{background:#fff;margin-top:6px}
+.anggota{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+.nama-petugas{background:#EEF2F8;color:#1A3E6F;border-radius:99px;padding:3px 10px;font-size:13px}
+.hadir{color:#1A3E6F}
+.filter{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+.filter .lebar2{grid-column:1/-1}
+.kab .lencana{align-self:flex-start;margin:4px 0}

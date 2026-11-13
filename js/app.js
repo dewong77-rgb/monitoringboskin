@@ -662,32 +662,53 @@ function tampilPanduan() {
 // ------------------------------------------------------------ progres
 async function tampilProgres() {
   muat('Memuat progres...');
-  var p;
-  try { p = await apiGetProgress(); } catch (e) { return galat(e.message, tampilProgres); }
-  var fTahap = '', fProv = '', fJenis = '';
+  var p, m;
+  try { p = await apiGetProgress(); m = await ambilMaster(); } catch (e) { return galat(e.message, tampilProgres); }
+  var fTahap = '', fProv = '', fJenis = '', fPetugas = '', fStatus = '';
+  var anggota = {};
+  m.tim.forEach(function (t) { anggota[t.idTim] = t.petugas || []; });
+  var semuaPetugas = Array.from(new Set([].concat.apply([], m.tim.map(function (t) { return t.petugas || []; })))).sort(function (x, y) { return x.localeCompare(y); });
+  function opsi(arr, pilih, semua) {
+    return '<option value="">' + semua + '</option>' + arr.map(function (t) { return '<option' + (t === pilih ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('');
+  }
   function gambar() {
-    var tahaps = Array.from(new Set(p.lokus.map(function (s) { return s.tahap; }))).sort();
-    var provs = Array.from(new Set(p.lokus.map(function (s) { return s.provinsi; }))).sort();
-    var data = p.lokus.filter(function (s) { return (!fTahap || s.tahap === fTahap) && (!fProv || s.provinsi === fProv) && (!fJenis || s.jenis === fJenis); });
+    var tahaps = Array.from(new Set(p.lokus.map(function (x) { return x.tahap; }))).sort();
+    var provs = Array.from(new Set(p.lokus.map(function (x) { return x.provinsi; }))).sort();
+    var data = p.lokus.filter(function (x) {
+      return (!fTahap || x.tahap === fTahap) && (!fProv || x.provinsi === fProv) && (!fJenis || x.jenis === fJenis) &&
+        (!fPetugas || (anggota[x.idTim] || []).indexOf(fPetugas) >= 0);
+    });
     var r = { target: data.length, selesai: 0, draft: 0, belum: 0 };
-    data.forEach(function (s) { r[s.status] = (r[s.status] || 0) + 1; });
+    data.forEach(function (x) { r[x.status] = (r[x.status] || 0) + 1; });
     var persen = r.target ? Math.round(r.selesai / r.target * 100) : 0;
-    var h = '<div class="kartu"><div class="baris">' +
-      '<select id="fTahap" class="input"><option value="">Semua tahap</option>' + tahaps.map(function (t) { return '<option' + (t === fTahap ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select>' +
-      '<select id="fProv" class="input"><option value="">Semua provinsi</option>' + provs.map(function (t) { return '<option' + (t === fProv ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select>' +
-      '<select id="fJenis" class="input"><option value="">Satdik dan UPT</option><option value="Satdik"' + (fJenis === 'Satdik' ? ' selected' : '') + '>Satdik saja</option><option value="UPT"' + (fJenis === 'UPT' ? ' selected' : '') + '>UPT saja</option></select></div>' +
+    var h = '<div class="kartu"><div class="filter">' +
+      '<select id="fTahap" class="input">' + opsi(tahaps, fTahap, 'Semua tahap') + '</select>' +
+      '<select id="fProv" class="input">' + opsi(provs, fProv, 'Semua provinsi') + '</select>' +
+      '<select id="fJenis" class="input"><option value="">Satdik dan UPT</option><option value="Satdik"' + (fJenis === 'Satdik' ? ' selected' : '') + '>Satdik saja</option><option value="UPT"' + (fJenis === 'UPT' ? ' selected' : '') + '>UPT saja</option></select>' +
+      '<select id="fStatus" class="input"><option value="">Semua status</option><option value="belumSelesai"' + (fStatus === 'belumSelesai' ? ' selected' : '') + '>Belum selesai saja</option></select>' +
+      '<select id="fPetugas" class="input lebar2">' + opsi(semuaPetugas, fPetugas, 'Semua petugas') + '</select>' + '</div>' +
       '<div class="angka"><div><b>' + r.selesai + '</b><span>Selesai</span></div><div><b>' + r.draft + '</b><span>Draft</span></div><div><b>' + r.belum + '</b><span>Belum mulai</span></div><div><b>' + persen + '%</b><span>dari ' + r.target + ' lokus</span></div></div>' +
       '<div class="bar"><div style="width:' + persen + '%"></div></div><p class="kecil">Diperbarui ' + esc(p.diambil) + ' · <a href="#" id="segarkan">Segarkan</a></p></div>';
     var peta = {};
-    data.forEach(function (s) { var k = s.tahap + '|' + s.provinsi + '|' + s.kabKota; (peta[k] = peta[k] || []).push(s); });
-    Object.keys(peta).sort().forEach(function (k) {
-      var arr = peta[k], tiga = k.split('|');
-      h += '<div class="kartu"><div class="kab"><b>' + esc(tiga[2]) + '</b><span class="kecil">' + esc(tiga[1]) + ' · ' + esc(tiga[0]) + ' · Tim ' + esc(arr.map(function (x) { return x.idTim; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ')) + '</span></div>';
-      arr.forEach(function (s) {
-        var lb = s.status === 'selesai' ? '<span class="lencana ok">Selesai</span>' : s.status === 'draft' ? '<span class="lencana sedang">Draft ' + s.butirTerisi + '/' + s.totalButir + '</span>' : '<span class="lencana">Belum mulai</span>';
-        var ket = s.jenis === 'UPT' ? '<span class="lencana upt">Sesi UPT</span>' : esc(s.kategori);
-        if (s.tanggal) ket += ' · ' + esc(tglIndo(s.tanggal));
-        h += '<a class="baris-lok" href="#/isi/' + encodeURIComponent(s.idLokus) + '"><div>' + esc(s.nama) + '<div class="kecil">' + ket + '</div></div>' + lb + '</a>';
+    data.forEach(function (x) { (peta[x.idTim] = peta[x.idTim] || []).push(x); });
+    var kunci = Object.keys(peta).filter(function (k) {
+      return !fStatus || peta[k].some(function (x) { return x.status !== 'selesai'; });
+    }).sort();
+    if (!kunci.length) h += '<div class="kartu tengah kecil">Tidak ada lokus yang cocok dengan pilihan ini.</div>';
+    kunci.forEach(function (k) {
+      var arr = peta[k], tim = timDari(m, k) || {}, sd = arr.filter(function (x) { return x.status === 'selesai'; }).length;
+      var anggotaTim = anggota[k] || [];
+      h += '<div class="kartu"><div class="kab"><b>Tim ' + esc(k) + '</b> <span class="lencana ' + (sd === arr.length ? 'ok' : sd ? 'sedang' : '') + '">' + sd + ' dari ' + arr.length + ' selesai</span>' +
+        '<div class="kecil">' + esc(tim.tahap || arr[0].tahap) + ' · ' + esc(arr[0].provinsi) + '</div>' +
+        '<div class="anggota">' + (anggotaTim.length ? anggotaTim.map(function (n) { return '<span class="nama-petugas">' + esc(n) + '</span>'; }).join('') : '<span class="kecil">Anggota tim belum diisi di data master</span>') + '</div></div>';
+      arr.forEach(function (x) {
+        if (fStatus && x.status === 'selesai') return;
+        var lb = x.status === 'selesai' ? '<span class="lencana ok">Selesai</span>' : x.status === 'draft' ? '<span class="lencana sedang">Draft ' + x.butirTerisi + '/' + x.totalButir + '</span>' : '<span class="lencana">Belum mulai</span>';
+        var ket = x.jenis === 'UPT' ? '<span class="lencana upt">Sesi UPT</span>' : esc(x.kategori);
+        ket += ' · ' + esc(x.kabKota);
+        if (x.tanggal) ket += ' · ' + esc(tglIndo(x.tanggal));
+        var hadir = x.petugas ? 'Hadir: ' + esc(x.petugas.split(/;\s*/).join(', ')) : 'Petugas hadir belum dicatat';
+        h += '<a class="baris-lok" href="#/isi/' + encodeURIComponent(x.idLokus) + '"><div>' + esc(x.nama) + '<div class="kecil">' + ket + '</div><div class="kecil hadir">' + hadir + '</div></div>' + lb + '</a>';
       });
       h += '</div>';
     });
@@ -695,6 +716,8 @@ async function tampilProgres() {
     document.getElementById('fTahap').onchange = function (e) { fTahap = e.target.value; gambar(); };
     document.getElementById('fProv').onchange = function (e) { fProv = e.target.value; gambar(); };
     document.getElementById('fJenis').onchange = function (e) { fJenis = e.target.value; gambar(); };
+    document.getElementById('fPetugas').onchange = function (e) { fPetugas = e.target.value; gambar(); };
+    document.getElementById('fStatus').onchange = function (e) { fStatus = e.target.value; gambar(); };
     document.getElementById('segarkan').onclick = function (e) { e.preventDefault(); tampilProgres(); };
   }
   gambar();
