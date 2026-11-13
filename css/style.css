@@ -122,3 +122,8 @@ details.profil summary{font-weight:700;cursor:pointer;min-height:28px}
 .filter{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
 .filter .lebar2{grid-column:1/-1}
 .kab .lencana{align-self:flex-start;margin:4px 0}
+.lok-isi{flex:1;min-width:0}
+.lok-nama{font-weight:600}
+.persen-lok{display:flex;align-items:center;gap:10px;margin:6px 0 2px}
+.persen-lok .bar{flex:1;margin:0}
+.persen-lok b{min-width:42px;text-align:right}
